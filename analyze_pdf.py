@@ -137,21 +137,19 @@ def count_bookmarks(pdf: pikepdf.Pdf) -> int:
     
     def count_outline_items(item, depth=0, max_depth=100):
         if depth > max_depth or item is None:
-            return 0
+            return
         
         nonlocal count
         count += 1
         
-        # Count children
+        # Count children (deeper level - increment depth)
         if isinstance(item, pikepdf.Dictionary):
             if '/First' in item:
                 count_outline_items(item['/First'], depth + 1, max_depth)
             
-            # Count siblings
+            # Count siblings (same level - do not increment depth)
             if '/Next' in item:
-                count_outline_items(item['/Next'], depth + 1, max_depth)
-        
-        return count
+                count_outline_items(item['/Next'], depth, max_depth)
     
     try:
         count_outline_items(current)
@@ -188,13 +186,13 @@ def extract_bookmark_structure(pdf: pikepdf.Pdf) -> List[Dict[str, Any]]:
             title = str(item.get('/Title', ''))
             bookmarks.append({'title': title, 'level': level})
             
-            # Process children (deeper level)
+            # Process children (deeper level - increment depth)
             if '/First' in item:
                 extract_outline_items(item['/First'], level + 1, depth + 1, max_depth)
             
-            # Process siblings (same level)
+            # Process siblings (same level - do not increment depth)
             if '/Next' in item:
-                extract_outline_items(item['/Next'], level, depth + 1, max_depth)
+                extract_outline_items(item['/Next'], level, depth, max_depth)
     
     try:
         extract_outline_items(outlines['/First'])
