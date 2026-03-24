@@ -1292,29 +1292,28 @@ def analyze_pdf(pdf_path: Path, reading_order_sample: str = 'all') -> Dict[str, 
     # Run veraPDF validation (outside pikepdf context)
     verapdf_validation = run_verapdf_validation(pdf_path)
     
-    with pikepdf.open(pdf_path) as pdf:
-        return {
-            'file': str(pdf_path),
-            'timestamp': datetime.now().isoformat(),
-            'pages': page_count,
-            'bookmarks': bookmark_count,
-            'tagged': True,
-            'language': doc_language,
-            'headings': heading_counts,
-            'heading_hierarchy': {
-                'valid': len(hierarchy_issues) == 0,
-                'issues': hierarchy_issues
-            },
-            'figures': alt_stats,
-            'tables': table_stats,
-            'text_quality': text_quality,
-            'font_mappings': font_mappings,
-            'bookmark_comparison': bookmark_comparison,
-            'internal_links': internal_links,
-            'document_title': doc_title_info,
-            'reading_order': reading_order,
-            'verapdf': verapdf_validation,
-        }
+    return {
+        'file': str(pdf_path),
+        'timestamp': datetime.now().isoformat(),
+        'pages': page_count,
+        'bookmarks': bookmark_count,
+        'tagged': True,
+        'language': doc_language,
+        'headings': heading_counts,
+        'heading_hierarchy': {
+            'valid': len(hierarchy_issues) == 0,
+            'issues': hierarchy_issues
+        },
+        'figures': alt_stats,
+        'tables': table_stats,
+        'text_quality': text_quality,
+        'font_mappings': font_mappings,
+        'bookmark_comparison': bookmark_comparison,
+        'internal_links': internal_links,
+        'document_title': doc_title_info,
+        'reading_order': reading_order,
+        'verapdf': verapdf_validation,
+    }
 
 
 def format_text_report(analysis: Dict[str, Any]) -> str:
