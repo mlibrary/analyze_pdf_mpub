@@ -202,6 +202,11 @@ The veraPDF WCAG 2.2 validation covers machine-testable success criteria (Level 
 ## Limitations
 
 - Requires veraPDF to be installed for compliance validation
+- **Reading order analysis uses a weak heuristic**: Compares PyMuPDF's text extraction order (tag-tree order for tagged PDFs) against visual positioning. The fuzzy matching approach generates:
+  - **False negatives** for multi-column layouts (which may be correctly tagged but appear out of order visually)
+  - **False positives** from short repeated strings (headers, footers) that match incorrectly
+  - Results should be treated as a rough indicator only, not weighted heavily in scoring
+  - Manual verification strongly recommended for any flagged reading order issues
 - Reading order analysis is sample-based for performance on large documents
 - Does not perform subjective quality checks (e.g., alt text quality, content clarity)
 - Some advanced structure elements may require manual verification

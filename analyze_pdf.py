@@ -829,6 +829,21 @@ def check_reading_order(pdf_path: Path, pdf: pikepdf.Pdf, sample_mode: str = 'al
     
     Compares structure tree sequence to spatial coordinates of text blocks.
     
+    **IMPORTANT LIMITATIONS - WEAK HEURISTIC**:
+    This comparison is between PyMuPDF's default text extraction order (which for
+    tagged PDFs follows the tag-tree order) and a visually-sorted version of the
+    same text. The fuzzy matching (first 20 chars, ±3 position tolerance) means:
+    
+    - **False negatives**: Multi-column layouts may appear as reading order issues
+      when they're actually correct (columns read vertically vs. horizontally)
+    - **False positives**: Short repeated strings (headers, footers, common phrases)
+      may match incorrectly, hiding real issues
+    - **Sampling**: Only checks first 10 text blocks per page, missing later content
+    
+    This is a rough heuristic for flagging potential issues but should NOT be
+    weighted heavily in accessibility scoring. Manual verification is strongly
+    recommended for any flagged issues.
+    
     Args:
         pdf_path: Path to the PDF file.
         pdf: The PDF document (pikepdf).
