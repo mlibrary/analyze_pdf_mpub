@@ -18,6 +18,7 @@ Outputs both human-readable text and JSON formats.
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import random
@@ -870,6 +871,9 @@ def check_reading_order(pdf_path: Path, pdf: pikepdf.Pdf, sample_mode: str = 'al
                 sample_pages.extend(first_pages)
                 
                 # Add 5 random pages from the rest of the document
+                # Seed random with PDF path hash for reproducible sampling
+                path_hash = int(hashlib.sha256(str(pdf_path).encode()).hexdigest()[:16], 16)
+                random.seed(path_hash)
                 remaining_pages = list(range(15, len(doc)))
                 random_count = min(5, len(remaining_pages))
                 random_pages = random.sample(remaining_pages, random_count)
