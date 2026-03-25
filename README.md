@@ -207,7 +207,7 @@ The veraPDF WCAG 2.2 validation covers machine-testable success criteria (Level 
   - **False positives** from short repeated strings (headers, footers) that match incorrectly
   - Results should be treated as a rough indicator only, not weighted heavily in scoring
   - Manual verification strongly recommended for any flagged reading order issues
-- Reading order analysis is sample-based for performance on large documents
+- Reading order analysis checks all pages by default (can use `--reading-order-sample standard` for faster sampling on large documents)
 - Does not perform subjective quality checks (e.g., alt text quality, content clarity)
 - Some advanced structure elements may require manual verification
 
