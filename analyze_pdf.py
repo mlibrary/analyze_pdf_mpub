@@ -452,7 +452,7 @@ def check_document_language(pdf: pikepdf.Pdf) -> Optional[str]:
             metadata = pdf.Root['/Metadata']
             # XMP metadata would need XML parsing - simplified check
             return None
-        except:
+        except Exception:
             pass
     
     return None
@@ -786,7 +786,7 @@ def check_font_unicode_mappings(pdf: pikepdf.Pdf) -> Dict[str, Any]:
                 if not isinstance(font_ref, pikepdf.Dictionary):
                     try:
                         font_obj = font_ref
-                    except:
+                    except Exception:
                         continue
                 else:
                     font_obj = font_ref
