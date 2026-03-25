@@ -174,8 +174,8 @@ Overall: 3/11 checks passed (27%)
 ## Understanding Results
 
 ### Pass/Fail Indicators
-- ✓ **Green checkmark**: Feature passes accessibility check
-- ✗ **Red X**: Feature fails accessibility check
+- ✓ **Checkmark**: Feature passes accessibility check
+- ✗ **X mark**: Feature fails accessibility check
 
 ### Common Issues
 - **Not Tagged**: PDF lacks logical structure tree (required for accessibility)
