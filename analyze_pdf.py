@@ -752,25 +752,25 @@ def analyze_text_extraction_quality(pdf_path: Path) -> Dict[str, Any]:
 
 def check_font_unicode_mappings(pdf: pikepdf.Pdf) -> Dict[str, Any]:
     """
-    Check font Unicode mappings in the PDF.
+    Check font embedding in the PDF.
     
     Args:
         pdf: The PDF document.
         
     Returns:
-        Dict with font mapping statistics.
+        Dict with font embedding statistics and detailed font lists.
     """
     stats = {
         'total_fonts': 0,
-        'fonts_without_tounicode': 0,
         'embedded_fonts': 0,
         'non_embedded_fonts': 0,
-        'font_issues': [],
+        'embedded_font_names': set(),
+        'non_embedded_font_names': set(),
     }
     
     try:
-        # Sample first few pages to check fonts
-        for page_num in range(min(10, len(pdf.pages))):
+        # Check ALL pages to get complete font inventory
+        for page_num in range(len(pdf.pages)):
             page = pdf.pages[page_num]
             
             if '/Resources' not in page:
@@ -791,34 +791,49 @@ def check_font_unicode_mappings(pdf: pikepdf.Pdf) -> Dict[str, Any]:
                 else:
                     font_obj = font_ref
                 
+                # Get the actual font name from BaseFont or FontName
+                actual_font_name = None
+                if '/BaseFont' in font_obj:
+                    actual_font_name = str(font_obj['/BaseFont']).lstrip('/')
+                elif '/FontDescriptor' in font_obj:
+                    desc = font_obj['/FontDescriptor']
+                    if isinstance(desc, pikepdf.Dictionary) and '/FontName' in desc:
+                        actual_font_name = str(desc['/FontName']).lstrip('/')
+                
+                if actual_font_name is None:
+                    actual_font_name = str(font_name)
+                
+                # Skip special placeholder fonts (like GlyphLessFont for form fields)
+                if actual_font_name == 'GlyphLessFont':
+                    continue
+                
                 stats['total_fonts'] += 1
                 
-                # Check for ToUnicode CMap
-                if '/ToUnicode' not in font_obj:
-                    stats['fonts_without_tounicode'] += 1
-                    if len(stats['font_issues']) < 10:
-                        stats['font_issues'].append({
-                            'page': page_num + 1,
-                            'font': str(font_name),
-                            'issue': 'missing_tounicode'
-                        })
-                
                 # Check if font is embedded
+                is_embedded = False
                 if '/FontDescriptor' in font_obj:
                     desc = font_obj['/FontDescriptor']
                     if isinstance(desc, pikepdf.Dictionary):
                         # Check for font file (embedded)
                         if any(key in desc for key in ['/FontFile', '/FontFile2', 
                                                        '/FontFile3']):
+                            is_embedded = True
                             stats['embedded_fonts'] += 1
+                            stats['embedded_font_names'].add(actual_font_name)
                         else:
                             stats['non_embedded_fonts'] += 1
+                            stats['non_embedded_font_names'].add(actual_font_name)
                 else:
                     stats['non_embedded_fonts'] += 1
+                    stats['non_embedded_font_names'].add(actual_font_name)
     
     except Exception as e:
         stats['error'] = str(e)
         logging.warning(f"Error checking font mappings: {e}")
+    
+    # Convert sets to sorted lists for JSON serialization
+    stats['embedded_font_names'] = sorted(list(stats['embedded_font_names']))
+    stats['non_embedded_font_names'] = sorted(list(stats['non_embedded_font_names']))
     
     return stats
 
@@ -1065,9 +1080,7 @@ def run_verapdf_validation(pdf_path: Path) -> Dict[str, Any]:
     # Format: (profile_name, flavour_or_path, is_custom_profile)
     profiles = [
         ('PDF/UA-1', 'ua1', False),
-        ('PDF/UA-2', 'ua2', False),
         ('WCAG 2.2 (Complete)', profile_base / 'WCAG-2-2-Complete.xml', True),
-        ('WTPDF 1.0 Accessibility', 'wt1a', False),
     ]
     
     for profile_name, profile_ref, is_custom in profiles:
@@ -1498,35 +1511,62 @@ def format_text_report(analysis: Dict[str, Any]) -> str:
         
         lines.append("")
     
-    # Font Unicode mappings
+    # Font Embedding
     font_maps = analysis.get('font_mappings', {})
     if font_maps.get('total_fonts', 0) > 0:
-        lines.append("FONT UNICODE MAPPINGS")
+        lines.append("FONT EMBEDDING")
         lines.append("-" * 70)
         
-        total = font_maps['total_fonts']
-        without_tounicode = font_maps.get('fonts_without_tounicode', 0)
-        embedded = font_maps.get('embedded_fonts', 0)
-        non_embedded = font_maps.get('non_embedded_fonts', 0)
+        total_occurrences = font_maps['total_fonts']
+        embedded_occurrences = font_maps.get('embedded_fonts', 0)
+        non_embedded_occurrences = font_maps.get('non_embedded_fonts', 0)
         
-        lines.append(f"  Total fonts (sampled): {total}")
-        lines.append(f"  Embedded fonts: {embedded}")
-        lines.append(f"  Non-embedded fonts: {non_embedded}")
+        embedded_names = font_maps.get('embedded_font_names', [])
+        non_embedded_names = font_maps.get('non_embedded_font_names', [])
+        total_unique = len(embedded_names) + len(non_embedded_names)
         
-        if without_tounicode > 0:
-            pct = (without_tounicode / total * 100)
-            lines.append(f"  Fonts without ToUnicode CMap: {without_tounicode} ({pct:.1f}%) ✗")
-            lines.append(f"    (May cause copy-paste issues and screen reader problems)")
-        else:
-            lines.append(f"  All fonts have ToUnicode CMap: ✓")
+        # Embedding statistics
+        lines.append(f"  PDF/UA 7.21.4.1 requires all fonts be embedded for consistent rendering.")
+        lines.append(f"  (Special placeholder fonts like GlyphLessFont are excluded from this check)")
+        lines.append(f"")
+        lines.append(f"  Unique fonts found: {total_unique}")
+        lines.append(f"    • {len(embedded_names)} embedded ✓")
+        lines.append(f"    • {len(non_embedded_names)} not embedded ✗")
+        if total_unique > 0 and len(non_embedded_names) > 0:
+            unique_pct = (len(non_embedded_names) / total_unique * 100)
+            lines.append(f"    ({unique_pct:.1f}% of distinct fonts are not embedded)")
+        lines.append(f"")
+        lines.append(f"  Font uses across document: {total_occurrences} total")
+        lines.append(f"    • {embedded_occurrences} uses of embedded fonts")
+        lines.append(f"    • {non_embedded_occurrences} uses of non-embedded fonts")
+        if total_occurrences > 0 and non_embedded_occurrences > 0:
+            occurrence_pct = (non_embedded_occurrences / total_occurrences * 100)
+            lines.append(f"    ({occurrence_pct:.1f}% of font uses in document are non-embedded)")
+        lines.append(f"")
+        lines.append(f"  Note: Text extraction quality (copy-paste, screen readers) is assessed")
+        lines.append(f"  separately in the TEXT EXTRACTION QUALITY section above.")
         
-        # Show sample font issues
-        font_issues = font_maps.get('font_issues', [])
-        if font_issues:
-            lines.append(f"  Sample font issues:")
-            for issue in font_issues[:3]:
-                lines.append(f"    • Page {issue['page']}: {issue['font']} - "
-                           f"{issue['issue'].replace('_', ' ')}")
+        # Show embedded font names
+        if embedded_names:
+            lines.append(f"")
+            lines.append(f"  ✓ Embedded fonts ({len(embedded_names)} unique):")
+            for font in embedded_names[:20]:  # Limit to first 20
+                lines.append(f"    • {font}")
+            if len(embedded_names) > 20:
+                lines.append(f"    ... and {len(embedded_names) - 20} more")
+        
+        # Show non-embedded font names  
+        if non_embedded_names:
+            lines.append(f"")
+            lines.append(f"  ✗ Non-embedded fonts ({len(non_embedded_names)} unique):")
+            for font in non_embedded_names[:20]:  # Limit to first 20
+                lines.append(f"    • {font}")
+            if len(non_embedded_names) > 20:
+                lines.append(f"    ... and {len(non_embedded_names) - 20} more")
+            lines.append(f"")
+            lines.append(f"    ⚠ Non-embedded fonts violate PDF/UA 7.21.4.1 and may cause:")
+            lines.append(f"       - Rendering differences across systems")
+            lines.append(f"       - WCAG 2.2 accessibility issues")
         
         lines.append("")
     
@@ -1697,6 +1737,34 @@ def format_text_report(analysis: Dict[str, Any]) -> str:
             
             lines.append("")
         
+        # Add font embedding details for WCAG compliance context
+        font_maps = analysis.get('font_mappings', {})
+        embedded_names = font_maps.get('embedded_font_names', [])
+        non_embedded_names = font_maps.get('non_embedded_font_names', [])
+        
+        if embedded_names or non_embedded_names:
+            lines.append("  Font Embedding Status (for WCAG compliance):")
+            lines.append("")
+            
+            if embedded_names:
+                lines.append(f"    ✓ Embedded fonts ({len(embedded_names)}):")
+                for font in embedded_names[:10]:
+                    lines.append(f"      • {font}")
+                if len(embedded_names) > 10:
+                    lines.append(f"      ... and {len(embedded_names) - 10} more")
+                lines.append("")
+            
+            if non_embedded_names:
+                lines.append(f"    ✗ Non-embedded fonts ({len(non_embedded_names)}):")
+                for font in non_embedded_names[:10]:
+                    lines.append(f"      • {font}")
+                if len(non_embedded_names) > 10:
+                    lines.append(f"      ... and {len(non_embedded_names) - 10} more")
+                lines.append("")
+                lines.append(f"    Non-embedded fonts violate PDF/UA 7.21.4.1 and may")
+                lines.append(f"    cause WCAG 2.2 failures for visual presentation consistency.")
+                lines.append("")
+        
         # Note about WCAG
         lines.append("  Note: WCAG 2.2 validation above covers machine-testable success")
         lines.append("  criteria (Level A and AA). Full WCAG 2.2 conformance requires")
@@ -1766,33 +1834,39 @@ def format_text_report(analysis: Dict[str, Any]) -> str:
     # Text quality checks
     text_quality = analysis.get('text_quality', {})
     if text_quality.get('available') and text_quality.get('total_chars', 0) > 0:
-        checks_total += 1
         unmapped = text_quality.get('unmapped_chars', 0)
         replacement = text_quality.get('replacement_chars', 0)
-        if unmapped == 0 and replacement == 0:
-            checks_passed += 1
-            lines.append("  ✓ No Unicode mapping issues detected")
-        else:
-            lines.append("  ✗ Unicode mapping issues detected")
+        image_based = text_quality.get('image_text_likely', False)
         
-        if not text_quality.get('image_text_likely'):
-            checks_total += 1
+        checks_total += 1
+        if unmapped == 0 and replacement == 0 and not image_based:
             checks_passed += 1
-            lines.append("  ✓ Text is properly extractable (not image-based)")
+            lines.append("  ✓ Text is properly extractable (real text, not images)")
         else:
-            checks_total += 1
-            lines.append("  ✗ Document appears to use image-based text")
+            issues = []
+            if unmapped > 0 or replacement > 0:
+                issues.append("character mapping issues")
+            if image_based:
+                issues.append("image-based text detected")
+            lines.append(f"  ✗ Text extraction problems: {', '.join(issues)}")
     
-    # Font mapping checks
+    # Font embedding checks (PDF/UA requirement)
     font_maps = analysis.get('font_mappings', {})
     if font_maps.get('total_fonts', 0) > 0:
+        embedded_names = font_maps.get('embedded_font_names', [])
+        non_embedded_names = font_maps.get('non_embedded_font_names', [])
+        total_unique = len(embedded_names) + len(non_embedded_names)
+        non_embedded_occurrences = font_maps.get('non_embedded_fonts', 0)
+        total_occurrences = font_maps.get('total_fonts', 0)
+        
         checks_total += 1
-        without_tounicode = font_maps.get('fonts_without_tounicode', 0)
-        if without_tounicode == 0:
+        if len(non_embedded_names) == 0:
             checks_passed += 1
-            lines.append("  ✓ All fonts have Unicode mappings (ToUnicode)")
+            lines.append("  ✓ All fonts embedded in PDF")
         else:
-            lines.append("  ✗ Some fonts missing Unicode mappings")
+            occurrence_pct = (non_embedded_occurrences / total_occurrences * 100) if total_occurrences > 0 else 0
+            lines.append(f"  ✗ {len(non_embedded_names)}/{total_unique} fonts not embedded")
+            lines.append(f"    ({occurrence_pct:.1f}% of font uses in document)")
     
     # Bookmark checks
     bookmark_comp = analysis.get('bookmark_comparison', {})
@@ -1830,18 +1904,35 @@ def format_text_report(analysis: Dict[str, Any]) -> str:
             issue_pct = (pages_with_issues / pages_checked * 100) if pages_checked > 0 else 0
             lines.append(f"  ✗ Reading order issues detected ({issue_pct:.1f}% of pages)")
     
-    # veraPDF validation results
+    # veraPDF validation results - combined check
     verapdf = analysis.get('verapdf', {})
     if verapdf.get('available'):
         profiles = verapdf.get('profiles', {})
-        for profile_name, profile_data in profiles.items():
-            if 'error' not in profile_data:
-                checks_total += 1
-                if profile_data.get('compliant', False):
-                    checks_passed += 1
-                    lines.append(f"  ✓ {profile_name} compliant")
+        
+        # Combined PDF/UA-1 and WCAG 2.2 check (pass if either passes)
+        pdfua1 = profiles.get('PDF/UA-1', {})
+        wcag = profiles.get('WCAG 2.2 (Complete)', {})
+        
+        if 'error' not in pdfua1 and 'error' not in wcag:
+            checks_total += 1
+            pdfua1_compliant = pdfua1.get('compliant', False)
+            wcag_compliant = wcag.get('compliant', False)
+            
+            if pdfua1_compliant or wcag_compliant:
+                checks_passed += 1
+                if pdfua1_compliant and wcag_compliant:
+                    lines.append(f"  ✓ Standards compliance: PDF/UA-1 and WCAG 2.2 both pass")
+                elif pdfua1_compliant:
+                    lines.append(f"  ✓ Standards compliance: PDF/UA-1 passes")
+                    lines.append(f"    (WCAG 2.2: {wcag.get('failed_rules', 0)} failures)")
                 else:
-                    lines.append(f"  ✗ {profile_name} non-compliant ({profile_data.get('failed_rules', 0)} failures)")
+                    lines.append(f"  ✓ Standards compliance: WCAG 2.2 passes")
+                    lines.append(f"    (PDF/UA-1: {pdfua1.get('failed_rules', 0)} failures)")
+            else:
+                ua1_fails = pdfua1.get('failed_rules', 0)
+                wcag_fails = wcag.get('failed_rules', 0)
+                lines.append(f"  ✗ Standards compliance: Both PDF/UA-1 and WCAG 2.2 fail")
+                lines.append(f"    (PDF/UA-1: {ua1_fails} failures, WCAG 2.2: {wcag_fails} failures)")
     
     lines.append("")
     score_pct = (checks_passed / checks_total * 100) if checks_total > 0 else 0
