@@ -19,17 +19,17 @@ This tool performs detailed accessibility analysis of PDF documents, checking fo
 
 ### Content Accessibility
 - **Figure Analysis**: Counts figures and checks for alternative text (alt text)
-- **Text Extraction Quality**: Validates that text can be properly extracted (not image-based)
-- **Unicode Mapping**: Checks for unmapped or replacement characters that may cause issues
-- **Font Embedding**: Identifies fonts without proper ToUnicode CMaps
+- **Table Structure**: Validates tables have proper header cells
+- **Text Extraction Quality**: Validates that text can be properly extracted (real text, not image-based)
+- **Font Embedding**: Checks that all fonts are embedded in the PDF (PDF/UA requirement)
 - **Reading Order**: Validates that logical structure matches visual reading order
 
 ### Standards Compliance
-Validates against multiple accessibility standards using veraPDF:
+Validates against accessibility standards using veraPDF:
 - **PDF/UA-1** (ISO 14289-1:2014) - Universal Accessibility standard
-- **PDF/UA-2** (ISO 14289-2:2024) - Latest Universal Accessibility standard
 - **WCAG 2.2 Complete** - Web Content Accessibility Guidelines machine-testable criteria
-- **WTPDF 1.0** - Well-Tagged PDF accessibility standard
+
+The tool combines both standards into a single compliance check: passes if either PDF/UA-1 or WCAG 2.2 passes.
 
 ### Output Formats
 - **Text Report**: Human-readable formatted report with pass/fail indicators
@@ -112,12 +112,16 @@ python3 analyze_pdf.py --input document.pdf --reading-order-sample standard
 
 ### Text Report
 The text report includes:
-- Document statistics (pages, bookmarks, tagging status)
+- Document statistics (pages, bookmarks, tagging status, language)
+- Heading structure and hierarchy validation
+- Figure analysis with alt text quality assessment
+- Table structure validation
 - Text extraction quality metrics
-- Font Unicode mapping analysis
+- Font embedding analysis
+- Internal cross-references and links
 - Document metadata
 - Reading order validation results
-- veraPDF compliance results with detailed rule failures
+- veraPDF compliance results (PDF/UA-1 and WCAG 2.2) with detailed rule failures
 - Overall accessibility summary with pass/fail checklist
 
 ### JSON Report
@@ -150,23 +154,48 @@ TEXT EXTRACTION QUALITY
   Unmapped Unicode chars: None ✓
   Replacement chars: None ✓
 
-FONT UNICODE MAPPINGS
+FONT EMBEDDING
 ----------------------------------------------------------------------
-  Total fonts (sampled): 28
-  Embedded fonts: 1
-  Non-embedded fonts: 27
-  Fonts without ToUnicode CMap: 19 (67.9%) ✗
+  PDF/UA 7.21.4.1 requires all fonts be embedded for consistent rendering.
+  (Special placeholder fonts like GlyphLessFont are excluded from this check)
+
+  Unique fonts found: 28
+    • 1 embedded ✓
+    • 27 not embedded ✗
+    (96.4% of distinct fonts are not embedded)
+
+  Font uses across document: 1450 total
+    • 50 uses of embedded fonts
+    • 1400 uses of non-embedded fonts
+    (96.6% of font uses in document are non-embedded)
+
+READING ORDER
+----------------------------------------------------------------------
+  Pages sampled: 204
+  Pages with reading order issues: 57
+  Pages without issues: 147 (72.1%)
+  Reading order issues: ✗
+
+VERAPDF VALIDATION
+----------------------------------------------------------------------
+  PDF/UA-1: ✗ FAIL
+    Passed rules: 96/106
+    Failed rules: 10
+
+  WCAG 2.2 (Complete): ✗ FAIL
+    Passed rules: 153/155
+    Failed rules: 2
 
 ACCESSIBILITY SUMMARY
 ----------------------------------------------------------------------
   ✗ PDF is not tagged
   ✗ Document language not declared
-  ✓ No Unicode mapping issues detected
-  ✓ Text is properly extractable (not image-based)
-  ✗ Some fonts missing Unicode mappings
+  ✓ Text is properly extractable (real text, not images)
+  ✗ 27/28 fonts not embedded
+    (96.6% of font uses in document)
   ✓ Document title in metadata
-  ✗ Reading order issues detected (18.5% of pages)
-  ✗ PDF/UA-1 non-compliant (10 failures)
+  ✗ Reading order issues (27.9% of pages)
+  ✗ Standards compliance: Both PDF/UA-1 and WCAG 2.2 fail
 
 Overall: 3/11 checks passed (27%)
 ```
@@ -182,7 +211,14 @@ Overall: 3/11 checks passed (27%)
 - **Language Not Declared**: Screen readers need language info for proper pronunciation
 - **Missing Alt Text**: Images/figures without alternative text descriptions
 - **Reading Order Issues**: Content structure doesn't match visual reading order
-- **Font Issues**: Fonts without proper Unicode mappings affect copy-paste and screen readers
+- **Fonts Not Embedded**: Non-embedded fonts can cause rendering inconsistencies and violate PDF/UA 7.21.4.1
+
+### Standards Compliance
+The tool validates against PDF/UA-1 and WCAG 2.2 and combines them into a single check:
+- **Pass**: If either standard passes
+- **Fail**: Only if both standards fail
+
+This approach recognizes that documents may meet accessibility goals through different standard paths.
 
 ### WCAG Compliance Note
 The veraPDF WCAG 2.2 validation covers machine-testable success criteria (Level A and AA). Full WCAG 2.2 conformance requires additional manual testing of:
