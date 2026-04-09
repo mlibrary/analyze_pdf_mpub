@@ -1546,28 +1546,6 @@ def format_text_report(analysis: Dict[str, Any]) -> str:
         lines.append(f"  Note: Text extraction quality (copy-paste, screen readers) is assessed")
         lines.append(f"  separately in the TEXT EXTRACTION QUALITY section above.")
         
-        # Show embedded font names
-        if embedded_names:
-            lines.append(f"")
-            lines.append(f"  ✓ Embedded fonts ({len(embedded_names)} unique):")
-            for font in embedded_names[:20]:  # Limit to first 20
-                lines.append(f"    • {font}")
-            if len(embedded_names) > 20:
-                lines.append(f"    ... and {len(embedded_names) - 20} more")
-        
-        # Show non-embedded font names  
-        if non_embedded_names:
-            lines.append(f"")
-            lines.append(f"  ✗ Non-embedded fonts ({len(non_embedded_names)} unique):")
-            for font in non_embedded_names[:20]:  # Limit to first 20
-                lines.append(f"    • {font}")
-            if len(non_embedded_names) > 20:
-                lines.append(f"    ... and {len(non_embedded_names) - 20} more")
-            lines.append(f"")
-            lines.append(f"    ⚠ Non-embedded fonts violate PDF/UA 7.21.4.1 and may cause:")
-            lines.append(f"       - Rendering differences across systems")
-            lines.append(f"       - WCAG 2.2 accessibility issues")
-        
         lines.append("")
     
     # Bookmarks vs Heading Hierarchy
@@ -1902,7 +1880,7 @@ def format_text_report(analysis: Dict[str, Any]) -> str:
             lines.append("  ✓ Reading order matches visual order")
         else:
             issue_pct = (pages_with_issues / pages_checked * 100) if pages_checked > 0 else 0
-            lines.append(f"  ✗ Reading order issues detected ({issue_pct:.1f}% of pages)")
+            lines.append(f"  ✗ Reading order issues ({issue_pct:.1f}% of pages)")
     
     # veraPDF validation results - combined check
     verapdf = analysis.get('verapdf', {})
@@ -1923,16 +1901,11 @@ def format_text_report(analysis: Dict[str, Any]) -> str:
                 if pdfua1_compliant and wcag_compliant:
                     lines.append(f"  ✓ Standards compliance: PDF/UA-1 and WCAG 2.2 both pass")
                 elif pdfua1_compliant:
-                    lines.append(f"  ✓ Standards compliance: PDF/UA-1 passes")
-                    lines.append(f"    (WCAG 2.2: {wcag.get('failed_rules', 0)} failures)")
+                    lines.append(f"  ✓ Standards compliance: PDF/UA-1 passes (WCAG 2.2 fails)")
                 else:
-                    lines.append(f"  ✓ Standards compliance: WCAG 2.2 passes")
-                    lines.append(f"    (PDF/UA-1: {pdfua1.get('failed_rules', 0)} failures)")
+                    lines.append(f"  ✓ Standards compliance: WCAG 2.2 passes (PDF/UA-1 fails)")
             else:
-                ua1_fails = pdfua1.get('failed_rules', 0)
-                wcag_fails = wcag.get('failed_rules', 0)
                 lines.append(f"  ✗ Standards compliance: Both PDF/UA-1 and WCAG 2.2 fail")
-                lines.append(f"    (PDF/UA-1: {ua1_fails} failures, WCAG 2.2: {wcag_fails} failures)")
     
     lines.append("")
     score_pct = (checks_passed / checks_total * 100) if checks_total > 0 else 0
