@@ -35,6 +35,7 @@ The tool combines both standards into a single compliance check: passes if eithe
 - **Text Report**: Human-readable formatted report with pass/fail indicators
 - **JSON Report**: Structured data for programmatic analysis and integration
 - **Console Output**: Summary displayed in terminal
+- **Batch Reports**: Aggregate statistics and validation summaries for multiple PDFs
 
 ## Requirements
 
@@ -99,7 +100,65 @@ python3 analyze_pdf.py --input document.pdf --reading-order-sample all
 python3 analyze_pdf.py --input document.pdf --reading-order-sample standard
 ```
 
+### Batch Processing
+
+Analyze multiple PDFs in a directory using `batch_analyze.py`:
+
+```bash
+python3 batch_analyze.py --input-dir /path/to/pdfs --output-dir batch_results
+```
+
+This will:
+- Analyze all PDFs in the input directory
+- Create individual analysis reports (`.txt` and `.json`) for each PDF
+- Generate a comprehensive batch summary with:
+  - Aggregate statistics (total pages, min/max/average)
+  - Validation statistics (PDF/UA-1 and WCAG 2.2 pass/fail counts)
+  - Page count distribution
+  - Per-file validation status
+- Creates `batch_summary.json` (machine-readable) and `batch_summary.txt` (human-readable)
+
+**Example batch summary output:**
+```
+================================================================================
+PDF BATCH ANALYSIS RESULTS
+================================================================================
+
+Total PDFs analyzed: 50
+Total pages across all PDFs: 12,450
+
+AGGREGATE PAGE STATISTICS:
+  Minimum pages: 25
+  Maximum pages: 600
+  Average pages: 249.00
+
+VALIDATION STATISTICS:
+  PDF/UA-1:
+    Pass: 12
+    Fail: 38
+  WCAG 2.2 (Complete):
+    Pass: 18
+    Fail: 32
+
+================================================================================
+
+Page count distribution (top 20):
+   1.  250 pages:  15 PDFs
+   2.  200 pages:  10 PDFs
+   ...
+
+================================================================================
+
+FILES ANALYZED:
+--------------------------------------------------------------------------------
+  document1.pdf                                        600 pages  PDF/UA-1: FAIL  WCAG: PASS
+  document2.pdf                                        450 pages  PDF/UA-1: PASS  WCAG: PASS
+  ...
+```
+
 ## Command-Line Options
+
+### analyze_pdf.py
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -107,6 +166,14 @@ python3 analyze_pdf.py --input document.pdf --reading-order-sample standard
 | `--output PATH` | Base path for output files (without extension) | `{input_stem}_analysis` |
 | `--verbose` | Enable verbose debug logging | `False` |
 | `--reading-order-sample {all\|standard}` | Reading order sampling strategy | `all` |
+
+### batch_analyze.py
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--input-dir PATH` | Directory containing PDF files to analyze (required) | - |
+| `--output-dir PATH` | Directory to store output files (required) | - |
+| `--analyze-script PATH` | Path to analyze_pdf.py script | `./analyze_pdf.py` |
 
 ## Output Structure
 
