@@ -23,7 +23,7 @@ For each PDF it processes, the tool produces a `_fulcrum.json` file containing:
 - **`document_type`** — whether the PDF has native embedded text, an OCR text layer, or is an unreadable image scan
 - **`metadata`** — PDF version, author, creator tool, title, encryption status, font flags
 - **`conformance`** — pass/fail results (with rule counts) for PDF/A-1b, PDF/UA-1, PDF/UA-2, WCAG 2.1, and WCAG 2.2 via veraPDF
-- **`bookmarks`** — the table of contents / navigation outline
+- **`bookmarks`** — the table of contents/navigation outline
 - **`page_info`** — character count per page (zero = image-only page)
 - **`marked_content`** — the full accessibility tag tree (structure elements and alt text)
 
@@ -107,7 +107,7 @@ The tool will find it automatically from there. No configuration needed. If vera
 
 > **If veraPDF is installed somewhere non-standard**, pass it explicitly:
 > ```bash
-> python run.py --input pdfs/ --output results/ --verapdf /path/to/verapdf
+> python3 run.py --input pdfs/ --output results/ --verapdf /path/to/verapdf
 > ```
 
 ---
@@ -119,7 +119,7 @@ Make sure your virtual environment is active (`source .venv/bin/activate`).
 ### Processing a single PDF
 
 ```bash
-python run.py --input path/to/file.pdf --output results/
+python3 run.py --input path/to/file.pdf --output results/
 ```
 
 Output: `results/file_fulcrum.json`
@@ -127,7 +127,7 @@ Output: `results/file_fulcrum.json`
 ### Processing a folder of PDFs
 
 ```bash
-python run.py --input path/to/pdf-folder/ --output results/
+python3 run.py --input path/to/pdf-folder/ --output results/
 ```
 
 This processes every `.pdf` file in the folder and writes one `_fulcrum.json` per file into the `results/` directory.
@@ -135,7 +135,7 @@ This processes every `.pdf` file in the folder and writes one `_fulcrum.json` pe
 Example with an explicit veraPDF path:
 
 ```bash
-python run.py --input data/my-books/ --output results/my-books/ --verapdf ~/Applications/verapdf/verapdf
+python3 run.py --input data/my-books/ --output results/my-books/ --verapdf ~/Applications/verapdf/verapdf
 ```
 
 ### All flags
