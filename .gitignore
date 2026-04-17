@@ -1,8 +1,14 @@
-.venv/
-input/
-output/
-resources/
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# macOS
 .DS_Store
-*.pdf
+
+# Editor
+.vscode/
+.idea/
