@@ -979,6 +979,20 @@ def _find_profile(verapdf_path: Path, *patterns: str) -> Optional[Path]:
     return None
 
 
+def _wcag_level_from_profile(profile_path: Optional[Path]) -> Optional[str]:
+    """Extract the WCAG conformance level (A, AA, AAA) from the profile filename."""
+    if not profile_path:
+        return None
+    name = profile_path.stem.upper()
+    if name.endswith('-AA') or '-AA-' in name:
+        return 'AA'
+    if name.endswith('-A') or '-A-' in name:
+        return 'A'
+    if 'COMPLETE' in name:
+        return 'AA'  # veraPDF "Complete" profile covers all WCAG 2.x levels
+    return None
+
+
 def find_wcag_21_profile(verapdf_path: Path) -> Optional[Path]:
     """Locate WCAG 2.1 profile XML (AA level preferred, then A)."""
     return _find_profile(
@@ -1022,14 +1036,14 @@ def run_verapdf_validation(pdf_path: Path) -> Dict[str, Any]:
     wcag_22_profile = find_wcag_22_profile(verapdf_path)
 
     profiles = [
-        ('PDF/A-1b', '1b',             False),
-        ('PDF/UA-1', 'ua1',            False),
-        ('PDF/UA-2', 'ua2',            False),
-        ('WCAG 2.1', wcag_21_profile,  True),
-        ('WCAG 2.2', wcag_22_profile,  True),
+        ('PDF/A-1b', '1b',             False, None),
+        ('PDF/UA-1', 'ua1',            False, None),
+        ('PDF/UA-2', 'ua2',            False, None),
+        ('WCAG 2.1', wcag_21_profile,  True,  _wcag_level_from_profile(wcag_21_profile)),
+        ('WCAG 2.2', wcag_22_profile,  True,  _wcag_level_from_profile(wcag_22_profile)),
     ]
 
-    for profile_name, profile_ref, is_custom in profiles:
+    for profile_name, profile_ref, is_custom, wcag_level in profiles:
         logging.info(f"Running veraPDF validation: {profile_name}")
 
         try:
@@ -1059,7 +1073,7 @@ def run_verapdf_validation(pdf_path: Path) -> Dict[str, Any]:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=None,
                 check=False
             )
 
@@ -1094,6 +1108,7 @@ def run_verapdf_validation(pdf_path: Path) -> Dict[str, Any]:
 
                 profile_result = {
                     'compliant':      compliant,
+                    'wcag_level':     wcag_level,
                     'passed_rules':   passed_rules,
                     'failed_rules':   failed_rules,
                     'total_rules':    total_rules,
@@ -1103,14 +1118,14 @@ def run_verapdf_validation(pdf_path: Path) -> Dict[str, Any]:
                 }
 
                 rule_summaries  = details.get('ruleSummaries', [])
-                failed_summaries = [r for r in rule_summaries if r.get('status') == 'failed'][:10]
+                failed_summaries = [r for r in rule_summaries if r.get('status') == 'failed']
 
                 if failed_summaries:
                     profile_result['failed_rule_summaries'] = [
                         {
                             'clause':        r.get('clause', 'Unknown'),
                             'specification': r.get('specification', 'Unknown'),
-                            'description':   r.get('description', '')[:200],
+                            'description':   r.get('description', ''),
                             'failed_checks': r.get('failedChecks', 0),
                         }
                         for r in failed_summaries

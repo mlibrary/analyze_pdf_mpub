@@ -46,10 +46,12 @@ Each sub-object has the following structure:
 
 | Field | Type | Description |
 |---|---|---|
+| `level` | `string \| null` | The conformance level being tested. `"AA"` for WCAG 2.1 and WCAG 2.2 (both evaluated at Level AA). `null` for PDF/A-1b, PDF/UA-1, and PDF/UA-2, which have no A/AA distinction. |
 | `status` | `string` | `"pass"`, `"fail"`, or `"not available"` (could not be evaluated). |
 | `passed_rules` | `integer \| null` | Number of validation rules the PDF passed. `null` if the profile could not run. |
 | `failed_rules` | `integer \| null` | Number of validation rules the PDF failed. `null` if the profile could not run. |
 | `total_rules` | `integer \| null` | Total number of rules evaluated (`passed + failed`). `null` if the profile could not run. |
+| `failed_rule_details` | `array \| null` | List of failed rules. Each entry has `clause` (section reference), `specification` (standard name), and `description` (explanation of what failed). `null` if no failures or profile did not run. |
 
 ### Standards checked
 
@@ -65,11 +67,11 @@ Each sub-object has the following structure:
 
 ```json
 "conformance": {
-  "PDFA_1_B": { "status": "fail",          "passed_rules": 8,    "failed_rules": 3,    "total_rules": 11 },
-  "PDFUA_1":  { "status": "fail",          "passed_rules": 5,    "failed_rules": 6,    "total_rules": 11 },
-  "PDFUA_2":  { "status": "not available", "passed_rules": null, "failed_rules": null, "total_rules": null },
-  "WCAG_2_1": { "status": "fail",          "passed_rules": 12,   "failed_rules": 4,    "total_rules": 16 },
-  "WCAG_2_2": { "status": "fail",          "passed_rules": 10,   "failed_rules": 6,    "total_rules": 16 }
+  "PDFA_1_B": { "level": null, "status": "fail",          "passed_rules": 8,    "failed_rules": 3,    "total_rules": 11,   "failed_rule_details": [{ "clause": "6.1.3", "specification": "ISO 19005-1", "description": "Font not embedded" }] },
+  "PDFUA_1":  { "level": null, "status": "fail",          "passed_rules": 5,    "failed_rules": 6,    "total_rules": 11,   "failed_rule_details": [{ "clause": "7.1", "specification": "ISO 14289-1", "description": "Document is not tagged" }] },
+  "PDFUA_2":  { "level": null, "status": "not available", "passed_rules": null, "failed_rules": null, "total_rules": null, "failed_rule_details": null },
+  "WCAG_2_1": { "level": "AA", "status": "fail",          "passed_rules": 12,   "failed_rules": 4,    "total_rules": 16,   "failed_rule_details": [{ "clause": "1.1.1", "specification": "WCAG2.1", "description": "Figure missing alternative text" }] },
+  "WCAG_2_2": { "level": "AA", "status": "fail",          "passed_rules": 10,   "failed_rules": 6,    "total_rules": 16,   "failed_rule_details": null }
 }
 ```
 
@@ -124,7 +126,7 @@ Document-level metadata extracted from the PDF info dictionary and XMP stream. F
 | `can_print` | `string (bool)` | `"true"` if the document permissions allow printing. |
 | `can_print_high_quality` | `string (bool)` | `"true"` if high-quality (faithful) printing is permitted. |
 
-### Text and Unicode qualityx
+### Text and Unicode quality
 
 | Field | Type | Description |
 |---|---|---|

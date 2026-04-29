@@ -38,8 +38,6 @@ try:
 except ImportError:
     PDFPLUMBER_AVAILABLE = False
 
-# Max tagged elements to emit — large books can have 100k+ nodes
-MARKED_CONTENT_LIMIT = 20_000
 
 
 # ---------------------------------------------------------------------------
@@ -282,12 +280,14 @@ def build_conformance(verapdf_result: Dict[str, Any]) -> Dict[str, Any]:
       - failed_rules:  int
       - total_rules:   int
     """
-    def empty_entry() -> Dict[str, Any]:
+    def empty_entry(level: Optional[str] = None) -> Dict[str, Any]:
         return {
-            'status':       'not available',
-            'passed_rules': None,
-            'failed_rules': None,
-            'total_rules':  None,
+            'level':               level,
+            'status':              'not available',
+            'passed_rules':        None,
+            'failed_rules':        None,
+            'total_rules':         None,
+            'failed_rule_details': None,
         }
 
     default = {
@@ -303,17 +303,27 @@ def build_conformance(verapdf_result: Dict[str, Any]) -> Dict[str, Any]:
 
     profiles = verapdf_result.get('profiles', {})
 
-    def entry(name: str) -> Dict[str, Any]:
+    def entry(name: str, level: Optional[str] = None) -> Dict[str, Any]:
         if name not in profiles:
-            return empty_entry()
+            return empty_entry(level=level)
         pd = profiles[name]
         if 'error' in pd:
-            return empty_entry()
+            return empty_entry(level=level)
+        failed_summaries = pd.get('failed_rule_summaries', [])
         return {
-            'status':       'pass' if pd.get('compliant') else 'fail',
-            'passed_rules': pd.get('passed_rules'),
-            'failed_rules': pd.get('failed_rules'),
-            'total_rules':  pd.get('total_rules'),
+            'level':               pd.get('wcag_level', level),
+            'status':              'pass' if pd.get('compliant') else 'fail',
+            'passed_rules':        pd.get('passed_rules'),
+            'failed_rules':        pd.get('failed_rules'),
+            'total_rules':         pd.get('total_rules'),
+            'failed_rule_details': [
+                {
+                    'clause':        r.get('clause'),
+                    'specification': r.get('specification'),
+                    'description':   r.get('description'),
+                }
+                for r in failed_summaries
+            ] or None,
         }
 
     return {
@@ -406,7 +416,6 @@ def extract_marked_content(pdf_path: Path) -> List[Dict[str, Any]]:
     Traverse the PDF structure tree and return a flat list of all tagged elements.
 
     Each element: { type, alttext }
-    Capped at MARKED_CONTENT_LIMIT. A sentinel is appended if the cap is hit.
     """
     elements: List[Dict] = []
 
@@ -415,8 +424,6 @@ def extract_marked_content(pdf_path: Path) -> List[Dict[str, Any]]:
         return s if s else None
 
     def traverse(obj: Any, depth: int = 0) -> None:
-        if len(elements) >= MARKED_CONTENT_LIMIT:
-            return
         if depth > 150:
             return
 
@@ -434,8 +441,6 @@ def extract_marked_content(pdf_path: Path) -> List[Dict[str, Any]]:
         elif isinstance(obj, (list, pikepdf.Array)):
             for item in obj:
                 traverse(item, depth + 1)
-                if len(elements) >= MARKED_CONTENT_LIMIT:
-                    return
 
     try:
         with pikepdf.open(pdf_path) as pdf:
@@ -445,12 +450,6 @@ def extract_marked_content(pdf_path: Path) -> List[Dict[str, Any]]:
             traverse(struct_root.get('/K', []))
     except Exception as e:
         logging.warning(f"Marked content extraction failed: {e}")
-
-    if len(elements) >= MARKED_CONTENT_LIMIT:
-        elements.append({
-            'type':    '_truncated',
-            'alttext': f'Output capped at {MARKED_CONTENT_LIMIT} elements',
-        })
 
     return elements
 
