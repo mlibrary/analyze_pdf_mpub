@@ -7,7 +7,10 @@ Usage:
     # Single file
     python run.py --input path/to/file.pdf --output path/to/output/
 
-    # Batch (directory)
+    # Batch (flat directory)
+    python run.py --input path/to/pdfs/ --output path/to/output/
+
+    # Batch (directory with subdirectories — structure is mirrored in output)
     python run.py --input path/to/pdfs/ --output path/to/output/
 
     # Specify veraPDF path explicitly (if not auto-detected)
@@ -29,17 +32,25 @@ def process_pdf(pdf_path: Path) -> dict:
     return analyze_pdf_fulcrum(pdf_path)
 
 
-def collect_pdfs(input_path: Path) -> 'list[Path]':
-    """Return a sorted list of PDF paths from a file or directory."""
+def collect_pdfs(input_path: Path) -> 'list[tuple[Path, Path]]':
+    """
+    Return a sorted list of (pdf_path, relative_path) tuples.
+
+    relative_path is the path of the PDF relative to input_path, used to
+    mirror the input directory structure inside the output directory.
+
+    For a single file input, relative_path is just the filename with no
+    parent directory component.
+    """
     if input_path.is_file():
         if input_path.suffix.lower() != '.pdf':
             raise SystemExit(f"Input file is not a PDF: {input_path}")
-        return [input_path]
+        return [(input_path, Path(input_path.name))]
     elif input_path.is_dir():
-        pdfs = sorted(input_path.glob('*.pdf'))
+        pdfs = sorted(input_path.rglob('*.pdf'))
         if not pdfs:
             raise SystemExit(f"No PDF files found in: {input_path}")
-        return pdfs
+        return [(p, p.relative_to(input_path)) for p in pdfs]
     else:
         raise SystemExit(f"Input path not found: {input_path}")
 
@@ -89,17 +100,22 @@ def main():
     success, failed = 0, 0
     batch_start = time.time()
 
-    for i, pdf_path in enumerate(pdfs, 1):
-        out_path = args.output / f"{pdf_path.stem}_fulcrum.json"
+    for i, (pdf_path, rel_path) in enumerate(pdfs, 1):
+        # Mirror the input subdirectory structure under the output directory
+        out_dir  = args.output / rel_path.parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{pdf_path.stem}.json"
 
-        print(f"[{i}/{total}] {pdf_path.name} ...", end=" ", flush=True)
+        # Show relative path so subdirectory context is visible in the log
+        display_name = str(rel_path)
+        print(f"[{i}/{total}] {display_name} ...", end=" ", flush=True)
         t0 = time.time()
 
         try:
             result = process_pdf(pdf_path)
             out_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding='utf-8')
             elapsed = round(time.time() - t0, 2)
-            print(f"✓ {elapsed}s → {out_path.name}")
+            print(f"✓ {elapsed}s → {out_path}")
             success += 1
         except Exception as e:
             elapsed = round(time.time() - t0, 2)

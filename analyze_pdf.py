@@ -993,16 +993,6 @@ def _wcag_level_from_profile(profile_path: Optional[Path]) -> Optional[str]:
     return None
 
 
-def find_wcag_21_profile(verapdf_path: Path) -> Optional[Path]:
-    """Locate WCAG 2.1 profile XML (AA level preferred, then A)."""
-    return _find_profile(
-        verapdf_path,
-        '**/WCAG-2-1-AA.xml',
-        '**/WCAG-2-1-A.xml',
-        '**/WCAG*2-1*.xml',
-    )
-
-
 def find_wcag_22_profile(verapdf_path: Path) -> Optional[Path]:
     """Locate WCAG 2.2 profile XML (AA or Complete)."""
     return _find_profile(
@@ -1016,7 +1006,7 @@ def find_wcag_22_profile(verapdf_path: Path) -> Optional[Path]:
 
 def run_verapdf_validation(pdf_path: Path) -> Dict[str, Any]:
     """
-    Run veraPDF validation for PDF/A-1b, PDF/UA-1, PDF/UA-2, WCAG 2.1, and WCAG 2.2.
+    Run veraPDF validation for PDF/A-1b, PDF/UA-1, PDF/UA-2, and WCAG 2.2.
     Profile names match Jeremy's Fulcrum conformance keys.
     """
     result = {
@@ -1032,14 +1022,12 @@ def run_verapdf_validation(pdf_path: Path) -> Dict[str, Any]:
 
     result['available'] = True
 
-    wcag_21_profile = find_wcag_21_profile(verapdf_path)
     wcag_22_profile = find_wcag_22_profile(verapdf_path)
 
     profiles = [
         ('PDF/A-1b', '1b',             False, None),
         ('PDF/UA-1', 'ua1',            False, None),
         ('PDF/UA-2', 'ua2',            False, None),
-        ('WCAG 2.1', wcag_21_profile,  True,  _wcag_level_from_profile(wcag_21_profile)),
         ('WCAG 2.2', wcag_22_profile,  True,  _wcag_level_from_profile(wcag_22_profile)),
     ]
 
@@ -1199,92 +1187,227 @@ def detect_document_type(pdf_path: Path, sample_pages: int = 10) -> Dict[str, An
     """
     Classify a PDF as 'native', 'scanned_ocr', or 'scanned_unreadable'.
 
-    Uses two independent signals:
+    Uses two independent signals parsed directly from the PDF content streams
+    via pikepdf — no PyMuPDF required for either signal.
 
-    1. Rendering mode 3 (Tr=3 operator in content stream) — the definitive
-       marker that invisible OCR text has been overlaid on a scanned image.
-       Parsed directly from each page's content stream via pikepdf.
+    PDF text operator primer:
+        Tr (text render mode) sets how glyphs are drawn. Mode 0 = filled/visible
+        (the default), mode 3 = invisible (no fill, no stroke). Tj, TJ, ' and "
+        are text-showing operators — they actually place characters on the page.
+        Tj places a single string; TJ places an array of strings interleaved with
+        kerning adjustments; ' and " do the same as Tj but also advance the line.
+        Do invokes a named XObject — if that XObject is a Form XObject it has
+        its own content stream which is recursed into, inheriting the current
+        render mode state.
 
-    2. Full-page image coverage (>85% of page area) via PyMuPDF — confirms
-       the page is a raster scan rather than a native PDF page.
+    Signal 1 — Tr=3 operator ratio (render mode 3):
+        Invisible text is the definitive marker of an OCR overlay. However a
+        single Tr=3 operator can appear in native PDFs (accessibility spans,
+        watermarks, etc.), so we require a strong majority of Tr operators on
+        sampled pages to use mode 3 before classifying as scanned_ocr.
+        Threshold: tr3_ratio >= 0.75 across all sampled Tr operators.
+        Empirically derived from a set of 637 PDFs — the lowest confirmed
+        scanned_ocr ratio was 0.8571 and the highest confirmed native ratio
+        was 0.6, leaving a clear gap around 0.75.
 
-    Classification logic (signals applied in priority order):
-      scanned_ocr        : rendering mode 3 detected on any sampled page
-      scanned_unreadable : full-page images present but zero chars extracted
-      native             : no scan indicators found
+    Signal 2 — visible character count:
+        Characters emitted by text-showing operators (Tj, TJ, ', ") while
+        tr_mode != 3. Used only in the no-Tr=3 path to distinguish native
+        from scanned_unreadable; when render_mode_3_detected is True the
+        tr3_ratio alone determines the classification.
+
+        Both the Tr tracking and this count include text inside Form XObjects
+        (recurse into Do).
+
+    Classification logic:
+        scanned_ocr        : tr3_ratio >= 0.75
+                             (render_mode_3 is the definitive OCR signal;
+                              any visible chars at tr_mode=0 are pre-Tr=3
+                              OCR artefacts, not evidence of native content)
+        scanned_ocr        : tr3_ratio < 0.75 AND tr3_ops > 0 AND visible_chars == 0
+                             (ratio diluted by bare Tr=0 resets; all text
+                              is still invisible — unambiguously OCR)
+        scanned_unreadable : tr3_ratio < 0.75 AND tr3_ops == 0 AND visible_chars == 0
+        native             : tr3_ratio < 0.75 AND visible_chars > 0
 
     Returns:
         {
-            'document_type':     'native' | 'scanned_ocr' | 'scanned_unreadable',
-            'render_mode_3_detected': bool,
-            'full_page_images':  int,   # pages with >85% image coverage
-            'method':            str,
+            'document_type':          'native' | 'scanned_ocr' | 'scanned_unreadable',
+            'render_mode_3_detected': bool,    # True if tr3_ratio >= 0.75
+            'tr3_ratio':              float,   # fraction of Tr operators that are mode 3
+            'tr3_ops':                int,     # count of Tr=3 operators seen
+            'total_tr_ops':           int,     # count of all Tr operators seen
+            'visible_chars':          int,     # non-white chars at tr_mode != 3
+            'classification_note':    str,     # present only when tr3_ops>0 dilutes ratio
+            'method':                 str,
         }
     """
-    SCAN_COVERAGE_THRESHOLD = 0.85
-    SAMPLE = sample_pages
+    SAMPLE            = sample_pages
+    TR3_THRESHOLD     = 0.75  # fraction of Tr operators that must be mode 3
+    MAX_XOBJECT_DEPTH = 6     # guard against pathological nesting
 
     result = {
         'document_type':          'native',
         'render_mode_3_detected': False,
-        'full_page_images':       0,
-        'method':                 'pikepdf_content_stream+pymupdf_coverage',
+        'tr3_ratio':              0.0,
+        'tr3_ops':                0,
+        'total_tr_ops':           0,
+        'visible_chars':          0,
+        'method':                 'pikepdf_content_stream',
     }
 
-    # ── Signal 1: rendering mode 3 via pikepdf content stream parsing ──────
+    def _get_resources(obj: pikepdf.Object) -> pikepdf.Object:
+        """Safely retrieve the /Resources dictionary from a page or Form XObject."""
+        try:
+            if '/Resources' in obj:
+                return obj['/Resources']
+        except Exception:
+            pass
+        return pikepdf.Dictionary()
+
+    def _parse_stream(stream_obj: pikepdf.Object,
+                      resources: pikepdf.Object,
+                      tr_mode: int,
+                      state: dict,
+                      depth: int) -> int:
+        """
+        Parse a content stream (page or Form XObject), updating state in-place.
+
+        Args:
+            stream_obj: the page or Form XObject whose stream to parse.
+            resources:  the /Resources dict in scope for this stream.
+            tr_mode:    inherited render mode from the calling context.
+            state:      mutable dict accumulating per-page counters.
+            depth:      current XObject recursion depth.
+
+        Returns:
+            The render mode in effect at the end of this stream (so the caller
+            can continue with the correct mode after the Do invocation).
+        """
+        if depth > MAX_XOBJECT_DEPTH:
+            return tr_mode
+
+        try:
+            for operands, operator in pikepdf.parse_content_stream(stream_obj):
+                op = str(operator)
+
+                # ── Track current render mode ──────────────────────────────
+                if op == 'Tr':
+                    state['total_tr'] += 1
+                    try:
+                        tr_mode = int(str(operands[0])) if operands else 0
+                    except (ValueError, IndexError):
+                        tr_mode = 0
+                    if tr_mode == 3:
+                        state['tr3_ops'] += 1
+                # ── Recurse into Form XObjects ─────────────────────────────
+                elif op == 'Do' and operands:
+                    xobj_name = str(operands[0])
+                    try:
+                        xobj_dict = resources.get('/XObject', pikepdf.Dictionary())
+                        if xobj_name in xobj_dict:
+                            xobj = xobj_dict[xobj_name]
+                            if xobj.get('/Subtype') == pikepdf.Name('/Form'):
+                                xobj_resources = _get_resources(xobj)
+                                tr_mode = _parse_stream(
+                                    xobj, xobj_resources, tr_mode, state, depth + 1
+                                )
+                    except Exception as e:
+                        logging.debug(f"XObject recursion error ({xobj_name}): {e}")
+
+                # ── Count visible text-showing operators ───────────────────
+                elif tr_mode != 3:
+                    text = None
+                    if op in ("'", '"') and operands:
+                        try:
+                            text = bytes(operands[0]).decode('utf-8', errors='replace')
+                        except Exception:
+                            pass
+                    elif op == 'Tj' and operands:
+                        try:
+                            text = bytes(operands[0]).decode('utf-8', errors='replace')
+                        except Exception:
+                            pass
+                    elif op == 'TJ' and operands:
+                        try:
+                            text = ''.join(
+                                bytes(item).decode('utf-8', errors='replace')
+                                for item in operands[0]
+                                if isinstance(item, pikepdf.String)
+                            )
+                        except Exception:
+                            pass
+
+                    if text:
+                        state['page_visible_chars'] += len(text)
+
+        except Exception as e:
+            logging.debug(f"Content stream parse error (depth {depth}): {e}")
+
+        return tr_mode
+
     try:
         with pikepdf.open(pdf_path) as pdf:
             pages_to_check = pdf.pages[:min(SAMPLE, len(pdf.pages))]
+
+            tr3_ops           = 0
+            total_tr          = 0
+            visible_chars_any = 0
+
             for page in pages_to_check:
                 try:
-                    for operands, operator in pikepdf.parse_content_stream(page):
-                        if str(operator) == 'Tr':
-                            if operands and int(str(operands[0])) == 3:
-                                result['render_mode_3_detected'] = True
-                                break
-                except Exception:
-                    pass
-                if result['render_mode_3_detected']:
-                    break
+                    # Mutable state dict shared across the recursive parse
+                    state = {
+                        'tr3_ops':            0,
+                        'total_tr':           0,
+                        'page_visible_chars': 0,
+                    }
+
+                    page_resources = _get_resources(page)
+                    _parse_stream(page, page_resources, tr_mode=0, state=state, depth=0)
+
+                    # Merge page state into document totals
+                    tr3_ops  += state['tr3_ops']
+                    total_tr += state['total_tr']
+                    visible_chars_any += state['page_visible_chars']
+
+                except Exception as e:
+                    logging.debug(f"Page processing error: {e}")
+                    continue
+
+            # ── Totals written once, after all pages ──────────────────────
+            result['tr3_ops']       = tr3_ops
+            result['total_tr_ops']  = total_tr
+            result['visible_chars'] = visible_chars_any
+
+            if total_tr > 0:
+                ratio = tr3_ops / total_tr
+                result['tr3_ratio'] = round(ratio, 4)
+                if ratio >= TR3_THRESHOLD:
+                    result['render_mode_3_detected'] = True
+
     except Exception as e:
         logging.warning(f"Content stream parsing failed: {e}")
+        result['error'] = str(e)
 
+    # ── Classification ────────────────────────────────────────────────────────
     if result['render_mode_3_detected']:
+        # tr3_ratio >= 0.75 is the definitive OCR signal. Any chars counted at
+        # tr_mode=0 are pre-Tr=3 artefacts from the OCR tool, not native text.
         result['document_type'] = 'scanned_ocr'
-        return result
-
-    # ── Signal 2: full-page image coverage + char count via PyMuPDF ────────
-    if PYMUPDF_AVAILABLE:
-        try:
-            doc = fitz.open(str(pdf_path))
-            pages_to_check = list(doc)[:min(SAMPLE, len(doc))]
-            total_chars = 0
-            full_page_images = 0
-
-            for page in pages_to_check:
-                page_area = page.rect.width * page.rect.height
-                total_chars += len(page.get_text())
-
-                if page_area == 0:
-                    continue
-                for img in page.get_images(full=True):
-                    xref = img[0]
-                    for rect in page.get_image_rects(xref):
-                        coverage = (rect.width * rect.height) / page_area
-                        if coverage > SCAN_COVERAGE_THRESHOLD:
-                            full_page_images += 1
-
-            doc.close()
-            result['full_page_images'] = full_page_images
-
-            if full_page_images > 0:
-                if total_chars == 0:
-                    result['document_type'] = 'scanned_unreadable'
-                else:
-                    result['document_type'] = 'scanned_ocr'
-
-        except Exception as e:
-            logging.warning(f"PyMuPDF document type detection failed: {e}")
+    else:
+        # No strong Tr=3 signal. Use visible char count to distinguish.
+        if result['tr3_ops'] > 0 and visible_chars_any == 0:
+            # Ratio diluted by bare Tr=0 resets, but zero visible text AND
+            # some Tr=3 ops means every character is still invisible — OCR.
+            result['document_type'] = 'scanned_ocr'
+            result['classification_note'] = (
+                f"tr3_ratio={result['tr3_ratio']} below threshold but "
+                f"tr3_ops={result['tr3_ops']}>0 with zero visible chars indicate OCR"
+            )
+        elif visible_chars_any == 0:
+            result['document_type'] = 'scanned_unreadable'
+        # else: remains 'native'
 
     return result
 

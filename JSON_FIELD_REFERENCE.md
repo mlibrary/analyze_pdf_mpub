@@ -60,7 +60,6 @@ Each sub-object has the following structure:
 | `PDFA_1_B` | PDF/A-1b | ISO 19005-1 archival format compliance. Ensures the file is self-contained and renderable without external resources. |
 | `PDFUA_1` | PDF/UA-1 | ISO 14289-1 universal accessibility compliance. The original PDF accessibility standard; widely supported by assistive technology. |
 | `PDFUA_2` | PDF/UA-2 | ISO 14289-2 universal accessibility compliance. Newer standard based on PDF 2.0; stricter tagging requirements. |
-| `WCAG_2_1` | WCAG 2.1 | Web Content Accessibility Guidelines 2.1 compliance, evaluated via veraPDF custom profile. |
 | `WCAG_2_2` | WCAG 2.2 | Web Content Accessibility Guidelines 2.2 compliance, evaluated via veraPDF custom profile. |
 
 **Example:**
@@ -70,8 +69,7 @@ Each sub-object has the following structure:
   "PDFA_1_B": { "level": null, "status": "fail",          "passed_rules": 8,    "failed_rules": 3,    "total_rules": 11,   "failed_rule_details": [{ "clause": "6.1.3", "specification": "ISO 19005-1", "description": "Font not embedded" }] },
   "PDFUA_1":  { "level": null, "status": "fail",          "passed_rules": 5,    "failed_rules": 6,    "total_rules": 11,   "failed_rule_details": [{ "clause": "7.1", "specification": "ISO 14289-1", "description": "Document is not tagged" }] },
   "PDFUA_2":  { "level": null, "status": "not available", "passed_rules": null, "failed_rules": null, "total_rules": null, "failed_rule_details": null },
-  "WCAG_2_1": { "level": "AA", "status": "fail",          "passed_rules": 12,   "failed_rules": 4,    "total_rules": 16,   "failed_rule_details": [{ "clause": "1.1.1", "specification": "WCAG2.1", "description": "Figure missing alternative text" }] },
-  "WCAG_2_2": { "level": "AA", "status": "fail",          "passed_rules": 10,   "failed_rules": 6,    "total_rules": 16,   "failed_rule_details": null }
+  "WCAG_2_2": { "level": "AA", "status": "fail",          "passed_rules": 12,   "failed_rules": 4,    "total_rules": 16,   "failed_rule_details": [{ "clause": "1.1.1", "specification": "WCAG2.2", "description": "Figure missing alternative text" }] }
 }
 ```
 

@@ -173,7 +173,6 @@ Each PDF produces one JSON file named `{pdf-filename}_fulcrum.json`. Here is a m
     "PDFA_1_B": { "status": "fail",          "passed_rules": 8,    "failed_rules": 3,    "total_rules": 11 },
     "PDFUA_1":  { "status": "fail",          "passed_rules": 5,    "failed_rules": 6,    "total_rules": 11 },
     "PDFUA_2":  { "status": "not available", "passed_rules": null, "failed_rules": null, "total_rules": null },
-    "WCAG_2_1": { "status": "fail",          "passed_rules": 12,   "failed_rules": 4,    "total_rules": 16 },
     "WCAG_2_2": { "status": "fail",          "passed_rules": 10,   "failed_rules": 6,    "total_rules": 16 }
   },
   "bookmarks": {

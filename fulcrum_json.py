@@ -12,7 +12,6 @@ Output schema (matches Fulcrum ticket format exactly)
   "conformance":             { "PDFA_1_B":  {"status": "compliant"|"not compliant"|"not present", "passed_rules": int, "failed_rules": int, "total_rules": int},
                                "PDFUA_1":   ...,
                                "PDFUA_2":   ...,
-                               "WCAG_2_1":  ...,
                                "WCAG_2_2":  ... },
   "bookmarks":               { "items": [...] },
   "page_info":               [ { "char_count": 1200 }, ... ],
@@ -20,6 +19,7 @@ Output schema (matches Fulcrum ticket format exactly)
 }
 """
 
+import hashlib
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -273,7 +273,7 @@ def build_conformance(verapdf_result: Dict[str, Any]) -> Dict[str, Any]:
     """
     Map veraPDF profile results → Fulcrum conformance block.
 
-    Keys: PDFA_1_B, PDFUA_1, PDFUA_2, WCAG_2_1, WCAG_2_2
+    Keys: PDFA_1_B, PDFUA_1, PDFUA_2, WCAG_2_2
     Each value is a dict with:
       - status:        'compliant' | 'not compliant' | 'not present'
       - passed_rules:  int
@@ -294,7 +294,6 @@ def build_conformance(verapdf_result: Dict[str, Any]) -> Dict[str, Any]:
         'PDFA_1_B': empty_entry(),
         'PDFUA_1':  empty_entry(),
         'PDFUA_2':  empty_entry(),
-        'WCAG_2_1': empty_entry(),
         'WCAG_2_2': empty_entry(),
     }
 
@@ -330,7 +329,6 @@ def build_conformance(verapdf_result: Dict[str, Any]) -> Dict[str, Any]:
         'PDFA_1_B': entry('PDF/A-1b'),
         'PDFUA_1':  entry('PDF/UA-1'),
         'PDFUA_2':  entry('PDF/UA-2'),
-        'WCAG_2_1': entry('WCAG 2.1'),
         'WCAG_2_2': entry('WCAG 2.2'),
     }
 
@@ -482,8 +480,11 @@ def assemble(
     if isinstance(analyzer_result, dict) and 'text_quality' in analyzer_result:
         meta['text_quality'] = analyzer_result['text_quality']
 
+    md5 = hashlib.md5(pdf_path.read_bytes()).hexdigest()
+
     out = {
-        'document_type':  doc_type.get('document_type') if doc_type else None,
+        'md5':            md5,
+        'document_type':  doc_type if doc_type else None,
         'metadata':       meta,
         'conformance':    build_conformance(verapdf_result),
         'bookmarks':      extract_outline(pdf_path),
