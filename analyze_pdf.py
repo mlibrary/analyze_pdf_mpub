@@ -1158,7 +1158,9 @@ def detect_ocr_status(pdf_path: Path, sample_pages: int = 10) -> Dict[str, Any]:
     try:
         import pdfplumber
         with pdfplumber.open(pdf_path) as pdf:
-            pages = pdf.pages[:min(sample_pages, len(pdf.pages))]
+            n = len(pdf.pages)
+            start = max(0, (n - sample_pages) // 2)
+            pages = pdf.pages[start:start + sample_pages]
             char_counts = [len(p.chars or []) for p in pages]
 
         if not char_counts:
@@ -1348,7 +1350,9 @@ def detect_document_type(pdf_path: Path, sample_pages: int = 10) -> Dict[str, An
 
     try:
         with pikepdf.open(pdf_path) as pdf:
-            pages_to_check = pdf.pages[:min(SAMPLE, len(pdf.pages))]
+            n = len(pdf.pages)
+            _start = max(0, (n - SAMPLE) // 2)
+            pages_to_check = pdf.pages[_start:_start + SAMPLE]
 
             tr3_ops           = 0
             total_tr          = 0
