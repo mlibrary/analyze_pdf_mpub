@@ -18,6 +18,7 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import random
 import re
 import subprocess
@@ -930,8 +931,6 @@ def find_verapdf() -> Optional[Path]:
     3. Common system install locations (Mac + Linux)
     4. PATH (via `which`)
     """
-    import os
-
     # 1. Explicit env var
     env_path = os.environ.get("VERAPDF_PATH")
     if env_path:
@@ -969,6 +968,52 @@ def find_verapdf() -> Optional[Path]:
         pass
 
     return None
+def _resolve_java_home() -> Optional[str]:
+    """
+    Return a corrected JAVA_HOME only when the current one is explicitly set
+    but broken (its bin/java doesn't exist).
+
+    If JAVA_HOME is unset, return None so the environment is left untouched —
+    this avoids triggering the macOS "install Java" stub via shutil.which.
+    Only repairs a stale/wrong JAVA_HOME (e.g. pointing at Java 8 when only
+    Java 17 is installed), which is the server-side failure mode.
+    """
+    existing = os.environ.get("JAVA_HOME", "")
+
+    if not existing:
+        return None  # unset — leave it alone, let verapdf find Java itself
+
+    if Path(existing, "bin", "java").exists():
+        return existing  # already good
+
+    # JAVA_HOME is set but broken — try to find a working Java on PATH.
+    # Use a symlink-aware walk: .../bin/java (resolved) → .../bin → ...
+    import shutil
+    java_exe = shutil.which("java")
+    if not java_exe:
+        return None
+
+    try:
+        real = Path(java_exe).resolve()
+        candidate = str(real.parent.parent)
+        # Sanity-check before returning: the resolved path must have bin/java.
+        if Path(candidate, "bin", "java").exists():
+            return candidate
+    except Exception:
+        pass
+
+    return None
+
+
+def _verapdf_env() -> dict:
+    """Return an env dict with a corrected JAVA_HOME for subprocess calls."""
+    env = os.environ.copy()
+    java_home = _resolve_java_home()
+    if java_home:
+        env["JAVA_HOME"] = java_home
+    return env
+
+
 def _find_profile(verapdf_path: Path, *patterns: str) -> Optional[Path]:
     """Search the veraPDF profiles directory for the first glob pattern that matches."""
     profiles_dir = verapdf_path.parent / 'profiles'
@@ -1062,7 +1107,8 @@ def run_verapdf_validation(pdf_path: Path) -> Dict[str, Any]:
                 capture_output=True,
                 text=True,
                 timeout=None,
-                check=False
+                check=False,
+                env=_verapdf_env()
             )
 
             if proc_result.returncode != 0 and not proc_result.stdout:
@@ -1904,3 +1950,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
