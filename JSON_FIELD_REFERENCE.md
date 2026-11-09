@@ -1,15 +1,16 @@
 # PDF Accessibility JSON Field Reference
 
 **Pipeline:** `analyze_pdf_fulcrum()` via pikepdf · PyMuPDF · veraPDF  
-**Last updated:** April 2026
+**Last updated:** November 2026
 
-This document describes every field in the JSON output produced by the PDF accessibility pipeline. Each entry lists the field name, data type, and a plain-language description of what it captures. Fields are only present when the source PDF contains the relevant data (absent fields are omitted from the output object).
+This document describes the fields in the JSON output produced by `run.py`. Some metadata fields are omitted when their source values are absent; other fields are always included or use `null` when unavailable.
 
 ---
 
 ## Table of Contents
 
 - [document\_type](#document_type)
+- [md5](#md5)
 - [conformance](#conformance)
 - [marked\_content](#marked_content)
 - [metadata](#metadata)
@@ -24,15 +25,37 @@ This document describes every field in the JSON output produced by the PDF acces
 
 ## document_type
 
-**Type:** `string`
+**Type:** `object`
 
-Classifies the PDF into one of three categories based on how its text content was produced. Determined using two signals: rendering mode 3 detection in the PDF content stream (the definitive OCR marker), and full-page image coverage ratio via PyMuPDF.
+The output is the complete result from the content-stream classifier, not just the classification label. The `document_type` member contains one of these values:
 
 | Value | Meaning |
 |---|---|
-| `native` | PDF contains embedded, digitally-authored text. No scan indicators found. |
-| `scanned_ocr` | PDF is a scanned image with an OCR text layer overlaid (rendering mode 3 detected, or full-page images with extractable text). |
-| `scanned_unreadable` | PDF is a scanned image with no readable text layer. Pages are image-only. |
+| `native` | Visible text was found and the classifier did not identify a strong OCR signal. |
+| `scanned_ocr` | The classifier identified an OCR text layer using invisible text operators. |
+| `scanned_unreadable` | No visible text or OCR text operators were found in the sampled content. |
+
+The classifier inspects up to 10 pages from the middle of the PDF. It classifies as OCR when at least 75% of sampled text-rendering-mode (`Tr`) operators use mode 3, or when some mode-3 operators are present but no visible text is found.
+
+| Member | Type | Description |
+|---|---|---|
+| `document_type.document_type` | `string` | One of the three classification values above. |
+| `document_type.render_mode_3_detected` | `boolean` | `true` when the mode-3 operator ratio reaches the 0.75 threshold. |
+| `document_type.tr3_ratio` | `number` | Fraction of sampled `Tr` operators that use mode 3. |
+| `document_type.tr3_ops` | `integer` | Number of sampled mode-3 `Tr` operators. |
+| `document_type.total_tr_ops` | `integer` | Number of sampled `Tr` operators. |
+| `document_type.visible_chars` | `integer` | Number of characters found in text-showing operators outside mode 3. |
+| `document_type.classification_note` | `string`, optional | Explanation for the low-ratio OCR fallback; omitted otherwise. |
+| `document_type.error` | `string`, optional | Content-stream parsing error, when one occurs. |
+| `document_type.method` | `string` | Classifier implementation identifier; currently `"pikepdf_content_stream"`. |
+
+---
+
+## md5
+
+**Type:** `string`
+
+Lowercase hexadecimal MD5 digest of the input PDF bytes.
 
 ---
 
@@ -40,13 +63,13 @@ Classifies the PDF into one of three categories based on how its text content wa
 
 **Type:** `object`
 
-Whether the PDF meets formal accessibility and archival standards, as evaluated by veraPDF. Contains five sub-objects, one per standard checked.
+Whether the PDF meets formal accessibility and archival standards, as evaluated by veraPDF. Contains four sub-objects, one per standard checked.
 
 Each sub-object has the following structure:
 
 | Field | Type | Description |
 |---|---|---|
-| `level` | `string \| null` | The conformance level being tested. `"AA"` for WCAG 2.1 and WCAG 2.2 (both evaluated at Level AA). `null` for PDF/A-1b, PDF/UA-1, and PDF/UA-2, which have no A/AA distinction. |
+| `level` | `string \| null` | The conformance level being tested. Currently `"AA"` for WCAG 2.2; `null` for PDF/A-1b, PDF/UA-1, and PDF/UA-2. |
 | `status` | `string` | `"pass"`, `"fail"`, or `"not available"` (could not be evaluated). |
 | `passed_rules` | `integer \| null` | Number of validation rules the PDF passed. `null` if the profile could not run. |
 | `failed_rules` | `integer \| null` | Number of validation rules the PDF failed. `null` if the profile could not run. |
@@ -92,7 +115,7 @@ Tag tree elements extracted from the PDF structure tree (`StructTreeRoot`). Each
 
 **Type:** `object`
 
-Document-level metadata extracted from the PDF info dictionary and XMP stream. Fields are present only when the source PDF contains them.
+Document-level metadata extracted from the PDF info dictionary and XMP stream. Some properties are always emitted when extraction succeeds; source metadata fields are omitted when absent. Recognized XMP fields are normalized to the names below, while unrecognized XMP and custom PDF info fields may also appear under their source-derived names.
 
 ### Core document info
 
@@ -101,13 +124,17 @@ Document-level metadata extracted from the PDF info dictionary and XMP stream. F
 | `Content-Type` | `string` | MIME type of the file. Always `"application/pdf"`. |
 | `dc:title` | `string` | Document title from XMP Dublin Core metadata. |
 | `dc:creator` | `string` | Author(s) from XMP Dublin Core metadata. |
+| `dc:description` | `string` | Description from XMP Dublin Core metadata. |
+| `dc:language` | `string` | Language from XMP or the PDF info dictionary. |
 | `pdf_version` | `string` | PDF specification version, e.g. `"1.6"`. |
 | `producer_software` | `string` | Software used to generate the final PDF file (i.e., the tool that converted or exported the document into PDF format). Extracted from the XMP metadata stream. |
 | `pdf:docinfo:title` | `string` | Document title from the older PDF info dictionary (may differ from `dc:title`). |
 | `pdf:docinfo:creator` | `string` | Author from the PDF info dictionary. |
+| `pdf:docinfo:subject` | `string` | Subject from the PDF info dictionary. |
 | `pdf:docinfo:creator_tool` | `string` | Software used to create the original document before it was converted into a PDF (e.g., "Adobe InDesign"). Extracted from the /Creator field in the PDF’s document info dictionary. |
 | `pdf:docinfo:created` | `string` | Creation date from the PDF info dictionary (ISO 8601 format). |
 | `pdf:docinfo:modified` | `string` | Last modified date from the PDF info dictionary (ISO 8601 format). |
+| `pdf:docinfo:custom:{name}` | `string` | A non-standard entry from the PDF info dictionary. A `LANGUAGE` entry is also exposed as `LANGUAGE` and, if absent, `dc:language`. |
 
 ### Accessibility flags
 
@@ -128,10 +155,10 @@ Document-level metadata extracted from the PDF info dictionary and XMP stream. F
 
 | Field | Type | Description |
 |---|---|---|
-| `unreadable_chars_per_page` | `array of int` | Count of characters per page that cannot be mapped to Unicode (these characters are unreadable by screen readers). |
-| `total_unreadable_chars` | `string (int)` | Total unmapped Unicode characters across the entire document. |
-| `unreadable_chars_pct` | `string (float)` | Percentage of all characters that are unmapped. High values indicate serious text accessibility issues. |
-| `ocr_page_count` | `string (int)` | Number of pages identified as containing OCR-processed text. |
+| `unreadable_chars_per_page` | `array of string` | Currently emitted as `"0"` for every page with extractable character counts; this pipeline does not calculate actual unmapped Unicode counts. |
+| `total_unreadable_chars` | `string (int)` | Currently emitted as `"0"`; this pipeline does not calculate actual unmapped Unicode counts. |
+| `unreadable_chars_pct` | `string (float)` | Currently emitted as `"0.0"`; this pipeline does not calculate an actual percentage. |
+| `ocr_page_count` | `string (int)` | Count of pages with at least one extractable text character. This is not a determination that those pages were OCR-processed. |
 
 ### XMP timestamps and identifiers
 
@@ -165,4 +192,4 @@ One entry per page. Provides per-page text content metrics.
 
 | Field | Type | Description |
 |---|---|---|
-| `[].char_count` | `integer` | Number of extractable text characters on this page. Zero means the page is image-only with no readable text. |
+| `[].char_count` | `integer` | Number of extractable text characters on this page. Zero means no text was extracted; the page may be image-only or otherwise have no extractable text. |
