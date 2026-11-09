@@ -18,11 +18,11 @@ A command-line tool that analyzes PDF files for accessibility and outputs struct
 
 ## Overview
 
-For each PDF it processes, the tool produces a `_fulcrum.json` file containing:
+For each PDF it processes, the tool produces a `{pdf-filename}.json` file containing:
 
 - **`document_type`** — whether the PDF has native embedded text, an OCR text layer, or is an unreadable image scan
 - **`metadata`** — PDF version, author, creator tool, title, encryption status, font flags
-- **`conformance`** — pass/fail results (with rule counts) for PDF/A-1b, PDF/UA-1, PDF/UA-2, WCAG 2.1, and WCAG 2.2 via veraPDF
+- **`conformance`** — pass/fail results (with rule counts) for PDF/A-1b, PDF/UA-1, PDF/UA-2, and WCAG 2.2 via veraPDF
 - **`bookmarks`** — the table of contents/navigation outline
 - **`page_info`** — character count per page (zero = image-only page)
 - **`marked_content`** — the full accessibility tag tree (structure elements and alt text)
@@ -103,7 +103,7 @@ fulcrum-cli/
     profiles/       ← standard profiles directory
     ...
 ```
-The tool will find it automatically from there. No configuration needed. If veraPDF isn't found, the tool still runs — it just skips the conformance block and marks all standards as `"not present"`.
+The tool will find it automatically from there. No configuration needed. If veraPDF isn't found, the tool still runs and marks each conformance result as `"not available"` with rule counts set to `null`.
 
 > **If veraPDF is installed somewhere non-standard**, pass it explicitly:
 > ```bash
@@ -122,7 +122,7 @@ Make sure your virtual environment is active (`source .venv/bin/activate`).
 python3 run.py --input path/to/file.pdf --output results/
 ```
 
-Output: `results/file_fulcrum.json`
+Output: `results/file.json`
 
 ### Processing a folder of PDFs
 
@@ -130,7 +130,7 @@ Output: `results/file_fulcrum.json`
 python3 run.py --input path/to/pdf-folder/ --output results/
 ```
 
-This processes every `.pdf` file in the folder and writes one `_fulcrum.json` per file into the `results/` directory.
+This recursively processes every `.pdf` file in the folder and writes one `{pdf-filename}.json` per file into `results/`. For PDFs in subdirectories, the output mirrors the input directory structure.
 
 Example with an explicit veraPDF path:
 
@@ -150,7 +150,7 @@ python3 run.py --input data/my-books/ --output results/my-books/ --verapdf ~/App
 
 ## Output format
 
-Each PDF produces one JSON file named `{pdf-filename}_fulcrum.json`. Here is a minimal example:
+Each PDF produces one JSON file named `{pdf-filename}.json`. Here is a minimal example:
 
 ```json
 {
